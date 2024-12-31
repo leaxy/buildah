@@ -39,7 +39,7 @@ type manifestCreateOpts struct {
 
 type manifestAddOpts struct {
 	authfile, certDir, creds, os, arch, variant, osVersion string
-	features, osFeatures, annotations, artifactAnnotations []string
+	features, osFeatures, annotations                      []string
 	tlsVerify, insecure, all                               bool
 	artifact, artifactExcludeTitles                        bool
 	artifactType, artifactLayerType                        string
@@ -149,7 +149,6 @@ func init() {
 	flags.StringVar(&manifestAddOpts.artifactLayerType, "artifact-layer-type", "", "artifact layer media type")
 	flags.BoolVar(&manifestAddOpts.artifactExcludeTitles, "artifact-exclude-titles", false, fmt.Sprintf(`refrain from setting %q annotations on "layers"`, v1.AnnotationTitle))
 	flags.StringVar(&manifestAddOpts.artifactSubject, "artifact-subject", "", "artifact subject reference")
-	flags.StringSliceVar(&manifestAddOpts.artifactAnnotations, "artifact-annotation", nil, "artifact annotation")
 	flags.StringVar(&manifestAddOpts.authfile, "authfile", auth.GetDefaultAuthFile(), "path of the authentication file. Use REGISTRY_AUTH_FILE environment variable to override")
 	flags.StringVar(&manifestAddOpts.certDir, "cert-dir", "", "use certificates at the specified path to access the registry")
 	flags.StringVar(&manifestAddOpts.creds, "creds", "", "use `[username[:password]]` for accessing the registry")
@@ -524,13 +523,6 @@ func manifestAddCmd(c *cobra.Command, args []string, opts manifestAddOpts) error
 			options.ConfigDescriptor.Size = -1
 			options.ConfigFile = opts.artifactConfigFile
 		}
-		if len(opts.artifactAnnotations) > 0 {
-			options.Annotations = make(map[string]string, len(opts.artifactAnnotations))
-			for _, annotation := range opts.artifactAnnotations {
-				k, v, _ := strings.Cut(annotation, "=")
-				options.Annotations[k] = v
-			}
-		}
 		options.ExcludeTitles = opts.artifactExcludeTitles
 		instanceDigest, err = list.AddArtifact(getContext(), systemContext, options, artifactSpec...)
 		if err != nil {
@@ -539,7 +531,7 @@ func manifestAddCmd(c *cobra.Command, args []string, opts manifestAddOpts) error
 		}
 	} else {
 		var changedArtifactFlags []string
-		for _, artifactOption := range []string{"artifact-type", "artifact-config", "artifact-config-type", "artifact-layer-type", "artifact-subject", "artifact-exclude-titles", "artifact-annotation"} {
+		for _, artifactOption := range []string{"artifact-type", "artifact-config", "artifact-config-type", "artifact-layer-type", "artifact-subject", "artifact-exclude-titles"} {
 			if c.Flags().Changed(artifactOption) {
 				changedArtifactFlags = append(changedArtifactFlags, "--"+artifactOption)
 			}

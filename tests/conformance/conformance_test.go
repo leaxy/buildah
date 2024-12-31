@@ -61,8 +61,6 @@ const (
 	cISUID = 0o4000 // Set uid, from archive/tar
 	cISGID = 0o2000 // Set gid, from archive/tar
 	cISVTX = 0o1000 // Save text (sticky bit), from archive/tar
-	// xattrs in the PAXRecords map are namespaced with this prefix
-	xattrPAXRecordNamespace = "SCHILY.xattr."
 )
 
 var (
@@ -2152,9 +2150,7 @@ var internalTestCases = []testCase{
 				Size:     8,
 				Mode:     0o640,
 				ModTime:  testDate,
-				PAXRecords: map[string]string{
-					xattrPAXRecordNamespace + "user.a": "test",
-				},
+				Xattrs:   map[string]string{"user.a": "test"},
 			}
 			if err = tw.WriteHeader(&hdr); err != nil {
 				return fmt.Errorf("writing tar archive header: %w", err)

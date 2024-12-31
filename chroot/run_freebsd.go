@@ -41,7 +41,6 @@ var (
 type runUsingChrootSubprocOptions struct {
 	Spec       *specs.Spec
 	BundlePath string
-	NoPivot    bool
 }
 
 func setPlatformUnshareOptions(spec *specs.Spec, cmd *unshare.Cmd) error {

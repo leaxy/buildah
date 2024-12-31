@@ -36,7 +36,7 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-func testMinimalWithPivot(t *testing.T, noPivot bool, modify func(g *generate.Generator, rootDir, bundleDir string), verify func(t *testing.T, report *types.TestReport)) {
+func testMinimal(t *testing.T, modify func(g *generate.Generator, rootDir, bundleDir string), verify func(t *testing.T, report *types.TestReport)) {
 	t.Helper()
 	g, err := generate.New("linux")
 	if err != nil {
@@ -100,8 +100,8 @@ func testMinimalWithPivot(t *testing.T, noPivot bool, modify func(g *generate.Ge
 	}
 
 	output := new(bytes.Buffer)
-	if err := RunUsingChroot(g.Config, bundleDir, "/", new(bytes.Buffer), output, output, noPivot); err != nil {
-		t.Fatalf("run(noPivot=%v): %v: %s", noPivot, err, output.String())
+	if err := RunUsingChroot(g.Config, bundleDir, "/", new(bytes.Buffer), output, output); err != nil {
+		t.Fatalf("run: %v: %s", err, output.String())
 	}
 
 	var report types.TestReport
@@ -111,14 +111,6 @@ func testMinimalWithPivot(t *testing.T, noPivot bool, modify func(g *generate.Ge
 
 	if verify != nil {
 		verify(t, &report)
-	}
-}
-
-func testMinimal(t *testing.T, modify func(g *generate.Generator, rootDir, bundleDir string), verify func(t *testing.T, report *types.TestReport)) {
-	for _, noPivot := range []bool{false, true} {
-		t.Run(fmt.Sprintf("noPivot=%v", noPivot), func(t *testing.T) {
-			testMinimalWithPivot(t, noPivot, modify, verify)
-		})
 	}
 }
 

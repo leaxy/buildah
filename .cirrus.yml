@@ -9,7 +9,6 @@ env:
     DEST_BRANCH: "main"
     GOPATH: "/var/tmp/go"
     GOSRC: "${GOPATH}/src/github.com/containers/buildah"
-    GOCACHE: "/tmp/go-build"
     # Overrides default location (/tmp/cirrus) for repo clone
     CIRRUS_WORKING_DIR: "${GOSRC}"
     # Shell used to execute all script commands
@@ -33,7 +32,7 @@ env:
     DEBIAN_NAME: "debian-13"
 
     # Image identifiers
-    IMAGE_SUFFIX: "c20241107t210000z-f41f40d13"
+    IMAGE_SUFFIX: "c20241106t163000z-f41f40d13"
     FEDORA_CACHE_IMAGE_NAME: "fedora-${IMAGE_SUFFIX}"
     PRIOR_FEDORA_CACHE_IMAGE_NAME: "prior-fedora-${IMAGE_SUFFIX}"
     DEBIAN_CACHE_IMAGE_NAME: "debian-${IMAGE_SUFFIX}"
@@ -57,7 +56,7 @@ gce_instance: &standardvm
     image_project: "${IMAGE_PROJECT}"
     zone: "us-central1-c"  # Required by Cirrus for the time being
     cpu: 2
-    memory: "4G"
+    memory: "4Gb"
     disk: 200  # Gigabytes, do not set less than 200 per obscure GCE docs re: I/O performance
     image_name: "${FEDORA_CACHE_IMAGE_NAME}"
 
@@ -70,7 +69,7 @@ meta_task:
     container:
         image: "quay.io/libpod/imgts:latest"
         cpu: 1
-        memory: "1G"
+        memory: 1
 
     env:
         # Space-separated list of images used by this repository state
@@ -94,11 +93,10 @@ smoke_task:
     name: "Smoke Test"
 
     gce_instance:
-        memory: "12G"
-        cpu: 4
+        memory: "12Gb"
 
     # Don't bother running on branches (including cron), or for tags.
-    skip: $CIRRUS_PR == ''
+    only_if: $CIRRUS_PR != ''
 
     timeout_in: 30m
 
@@ -122,14 +120,13 @@ vendor_task:
 
     # Runs within Cirrus's "community cluster"
     container:
-        image: docker.io/library/golang:1.22
+        image: docker.io/library/golang:latest
         cpu: 1
         memory: 1
 
     timeout_in: 5m
 
     vendor_script:
-        - './hack/check_vendor_toolchain.sh Try updating the image used by the vendor_task in .cirrus.yml.'
         - 'make vendor'
         - './hack/tree_status.sh'
 
@@ -137,17 +134,15 @@ vendor_task:
 # Confirm cross-compile ALL architectures on a Mac OS-X VM.
 cross_build_task:
     name: "Cross Compile"
-    gce_instance:
-        cpu: 8
-        memory: "24G"
     alias: cross_build
-    skip: >-
-        $CIRRUS_CHANGE_TITLE =~ '.*CI:DOCS.*'
+    only_if: >-
+        $CIRRUS_CHANGE_TITLE !=~ '.*CI:DOCS.*'
     env:
         HOME: /root
     script:
         - go version
-        - make -j cross CGO_ENABLED=0
+        - make cross CGO_ENABLED=0
+
     binary_artifacts:
         path: ./bin/*
 
@@ -155,12 +150,13 @@ cross_build_task:
 unit_task:
     name: 'Unit tests w/ $STORAGE_DRIVER'
     alias: unit
-    skip: &not_build_docs >-
-        $CIRRUS_CHANGE_TITLE =~ '.*CI:DOCS.*' ||
-        $CIRRUS_CHANGE_TITLE =~ '.*CI:BUILD.*'
-    depends_on: &smoke_vendor
+    only_if: &not_build_docs >-
+        $CIRRUS_CHANGE_TITLE !=~ '.*CI:DOCS.*' &&
+        $CIRRUS_CHANGE_TITLE !=~ '.*CI:BUILD.*'
+    depends_on: &smoke_vendor_cross
       - smoke
       - vendor
+      - cross_build
 
     timeout_in: 90m
 
@@ -171,14 +167,18 @@ unit_task:
               STORAGE_DRIVER: 'overlay'
 
     setup_script: '${SCRIPT_BASE}/setup.sh |& ${_TIMESTAMP}'
+    build_script: '${SCRIPT_BASE}/build.sh |& ${_TIMESTAMP}'
     unit_test_script: '${SCRIPT_BASE}/test.sh unit |& ${_TIMESTAMP}'
+
+    binary_artifacts:
+        path: ./bin/*
 
 
 conformance_task:
     name: 'Debian Conformance w/ $STORAGE_DRIVER'
     alias: conformance
-    skip: *not_build_docs
-    depends_on: *smoke_vendor
+    only_if: *not_build_docs
+    depends_on: *smoke_vendor_cross
 
     gce_instance:
         image_name: "${DEBIAN_CACHE_IMAGE_NAME}"
@@ -199,8 +199,8 @@ conformance_task:
 integration_task:
     name: "Integration $DISTRO_NV w/ $STORAGE_DRIVER"
     alias: integration
-    skip: *not_build_docs
-    depends_on: *smoke_vendor
+    only_if: *not_build_docs
+    depends_on: *smoke_vendor_cross
 
     matrix:
         # VFS
@@ -256,8 +256,8 @@ integration_task:
 integration_rootless_task:
     name: "Integration rootless $DISTRO_NV w/ $STORAGE_DRIVER"
     alias: integration_rootless
-    skip: *not_build_docs
-    depends_on: *smoke_vendor
+    only_if: *not_build_docs
+    depends_on: *smoke_vendor_cross
 
     matrix:
         # Running rootless tests on overlay
@@ -296,8 +296,8 @@ integration_rootless_task:
 in_podman_task:
     name: "Containerized Integration"
     alias: in_podman
-    skip: *not_build_docs
-    depends_on: *smoke_vendor
+    only_if: *not_build_docs
+    depends_on: *smoke_vendor_cross
 
     env:
         # This is key, cause the scripts to re-execute themselves inside a container.

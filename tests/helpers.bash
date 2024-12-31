@@ -172,11 +172,9 @@ function normalize_image_name() {
 
 function _prefetch() {
     if [ -z "${_BUILDAH_IMAGE_CACHEDIR}" ]; then
-        export _BUILDAH_IMAGE_CACHEDIR=${BATS_SUITE_TMPDIR}/buildah-image-cache
+        _pgid=$(sed -ne 's/^NSpgid:\s*//p' /proc/$$/status)
+        export _BUILDAH_IMAGE_CACHEDIR=${BATS_TMPDIR}/buildah-image-cache.$_pgid
         mkdir -p ${_BUILDAH_IMAGE_CACHEDIR}
-
-        # It's 700 by default; that prevents 'unshare' from reading cached images
-        chmod 711 ${BATS_SUITE_TMPDIR:?is unset} ${BATS_SUITE_TMPDIR}/..
     fi
 
     local storage=
@@ -188,33 +186,22 @@ function _prefetch() {
         img=$(normalize_image_name "$img")
         echo "# [checking for: $img]" >&2
         fname=$(tr -c a-zA-Z0-9.- - <<< "$img")
-        ( flock --timeout 300 9 || die "Could not flock"; _prefetch_locksafe $img $fname ) 9> $_BUILDAH_IMAGE_CACHEDIR/$fname.lock
+        if [ -d $_BUILDAH_IMAGE_CACHEDIR/$fname ]; then
+            echo "# [restoring from cache: $_BUILDAH_IMAGE_CACHEDIR / $img]" >&2
+            copy dir:$_BUILDAH_IMAGE_CACHEDIR/$fname containers-storage:"$storage""$img"
+        else
+            rm -fr $_BUILDAH_IMAGE_CACHEDIR/$fname
+            echo "# [copy docker://$img dir:$_BUILDAH_IMAGE_CACHEDIR/$fname]" >&2
+            for attempt in $(seq 3) ; do
+                if copy $COPY_REGISTRY_OPTS docker://"$img" dir:$_BUILDAH_IMAGE_CACHEDIR/$fname ; then
+                    break
+                fi
+                sleep 5
+            done
+            echo "# [copy dir:$_BUILDAH_IMAGE_CACHEDIR/$fname containers-storage:$storage$img]" >&2
+            copy dir:$_BUILDAH_IMAGE_CACHEDIR/$fname containers-storage:"$storage""$img"
+        fi
     done
-}
-
-# DO NOT CALL THIS. EVER. This must only be called from _prefetch().
-function _prefetch_locksafe() {
-    local img="$1"
-    local fname="$2"
-
-    if [ -d $_BUILDAH_IMAGE_CACHEDIR/$fname ]; then
-        echo "# [restoring from cache: $_BUILDAH_IMAGE_CACHEDIR / $img]" >&2
-        copy dir:$_BUILDAH_IMAGE_CACHEDIR/$fname containers-storage:"$storage""$img"
-    else
-        rm -fr ${_BUILDAH_IMAGE_CACHEDIR:?THIS CAN NEVER HAPPEN}/$fname
-        echo "# [copy docker://$img dir:$_BUILDAH_IMAGE_CACHEDIR/$fname]" >&2
-        for attempt in $(seq 3) ; do
-            if copy $COPY_REGISTRY_OPTS docker://"$img" dir:$_BUILDAH_IMAGE_CACHEDIR/$fname ; then
-                break
-            else
-                # Failed. Clean up, so we don't leave incomplete remnants
-                rm -fr ${_BUILDAH_IMAGE_CACHEDIR:?THIS CAN NEVER HAPPEN EITHER}/$fname
-            fi
-            sleep 5
-        done
-        echo "# [copy dir:$_BUILDAH_IMAGE_CACHEDIR/$fname containers-storage:$storage$img]" >&2
-        copy dir:$_BUILDAH_IMAGE_CACHEDIR/$fname containers-storage:"$storage""$img"
-    fi
 }
 
 function createrandom() {
